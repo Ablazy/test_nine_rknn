@@ -11,7 +11,8 @@ from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI,Query, HTTPException
-from predict import predict_onnx,predict_onnx_pdl,predict_onnx_dfine
+# from predict import predict_onnx_pdl,predict_onnx_dfine
+from predict import predict_rknn_pdl,predict_onnx_dfine
 from crop_image import crop_image_v3,save_path,save_fail_path,save_pass_path,validate_path
 
 PORT = 9645
@@ -36,9 +37,9 @@ LOGGING_CONFIG = {
     },
     "loggers": {
         # 将根日志记录器的级别设置为 INFO
-        "": {"handlers": ["default"], "level": "INFO"},
-        "uvicorn.error": {"level": "INFO"},
-        "uvicorn.access": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "": {"handlers": ["default"], "level": logging.INFO},
+        "uvicorn.error": {"level": logging.INFO},
+        "uvicorn.access": {"handlers": ["default"], "level": logging.INFO, "propagate": False},
     },
 }
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -98,17 +99,10 @@ def prepare(gt: str, challenge: str) -> tuple[Crack, bytes, str, str]:
     pic_content,pic_name,pic_type = crack.get_pic()
     return crack,pic_content,pic_name,pic_type
 
-def do_pass_nine(pic_content: bytes, use_v3_model: bool, point: Optional[str]) -> list[str]:
+def do_pass_nine(pic_content: bytes) -> list[str]:
     """处理九宫格验证码，返回坐标点列表。"""
     crop_image_v3(pic_content)
-    if use_v3_model:
-        result_list = predict_onnx_pdl(validate_path)
-    else:
-        with open(f"{validate_path}/cropped_9.jpg", "rb") as rb:
-            icon_image = rb.read()
-        with open(f"{validate_path}/nine.jpg", "rb") as rb:
-            bg_image = rb.read()
-        result_list = predict_onnx(icon_image, bg_image, point)
+    result_list = predict_rknn_pdl(validate_path)
     return [f"{col}_{row}" for row, col in result_list]
 
 def do_pass_icon(pic:Any, draw_result: bool) -> list[str]:
@@ -143,11 +137,7 @@ def handle_pass_request(gt: str, challenge: str, save_result: bool, **kwargs) ->
         # 2. 识别
         
         if pic_type == "nine":
-            point_list = do_pass_nine(
-                pic_content,
-                use_v3_model=kwargs.get("use_v3_model", True),
-                point=kwargs.get("point",None)
-            )
+            point_list = do_pass_nine(pic_content)
         elif pic_type == "icon":
             point_list = do_pass_icon(pic_content, save_result)
         else:
