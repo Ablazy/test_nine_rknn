@@ -1,10 +1,9 @@
 httpx
+httpx[http2]
 cryptography
 onnxruntime
-opencv-python
+opencv-python-headless
 numpy
 Pillow
-matplotlib
-tqdm
 fastapi
 uvicorn
