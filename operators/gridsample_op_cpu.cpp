@@ -24,51 +24,55 @@ void _bilinear_sample(
     const char* padding_mode,
     float* output_data)
 {
+    // NHWC 格式：循环顺序应该是 N->H->W->C
     for (int n = 0; n < N; ++n) {
-        for (int c = 0; c < C; ++c) {
-            for (int h = 0; h < H_out; ++h) {
-                for (int w = 0; w < W_out; ++w) {
-                    int out_idx = n * C * H_out * W_out + c * H_out * W_out + h * W_out + w;
-                    float x = grid_x_data[n * H_out * W_out * 2 + h * W_out * 2 + w * 2 + 0]; // x coord
-                    float y = grid_y_data[n * H_out * W_out * 2 + h * W_out * 2 + w * 2 + 1]; // y coord
+        for (int h = 0; h < H_out; ++h) {
+            for (int w = 0; w < W_out; ++w) {
+                float x = grid_x_data[n * H_out * W_out + h * W_out + w];
+                float y = grid_y_data[n * H_out * W_out + h * W_out + w];
 
-                    int x0 = static_cast<int>(std::floor(x));
-                    int x1 = x0 + 1;
-                    int y0 = static_cast<int>(std::floor(y));
-                    int y1 = y0 + 1;
+                // 计算双线性插值的四个邻近点
+                int x0 = static_cast<int>(std::floor(x));
+                int x1 = x0 + 1;
+                int y0 = static_cast<int>(std::floor(y));
+                int y1 = y0 + 1;
 
-                    float wx = x - x0;
-                    float wy = y - y0;
+                float wx = x - x0;
+                float wy = y - y0;
 
-                    bool valid_x0 = (x0 >= 0) && (x0 < W_in);
-                    bool valid_x1 = (x1 >= 0) && (x1 < W_in);
-                    bool valid_y0 = (y0 >= 0) && (y0 < H_in);
-                    bool valid_y1 = (y1 >= 0) && (y1 < H_in);
+                // 边界检查和处理
+                bool valid_x0 = (x0 >= 0) && (x0 < W_in);
+                bool valid_x1 = (x1 >= 0) && (x1 < W_in);
+                bool valid_y0 = (y0 >= 0) && (y0 < H_in);
+                bool valid_y1 = (y1 >= 0) && (y1 < H_in);
 
-                    // Clamp indices for safe access
-                    x0 = std::max(0, std::min(x0, W_in - 1));
-                    x1 = std::max(0, std::min(x1, W_in - 1));
-                    y0 = std::max(0, std::min(y0, H_in - 1));
-                    y1 = std::max(0, std::min(y1, H_in - 1));
+                x0 = std::max(0, std::min(x0, W_in - 1));
+                x1 = std::max(0, std::min(x1, W_in - 1));
+                y0 = std::max(0, std::min(y0, H_in - 1));
+                y1 = std::max(0, std::min(y1, H_in - 1));
 
-                    int base_in_idx = n * C * H_in * W_in + c * H_in * W_in;
+                // 对每个通道进行插值
+                for (int c = 0; c < C; ++c) {
+                    // NHWC 格式的索引计算
+                    int out_idx = n * H_out * W_out * C + h * W_out * C + w * C + c;
+                    
+                    // 获取四个邻近点的值（NHWC格式）
+                    float Q00 = input_data[n * H_in * W_in * C + y0 * W_in * C + x0 * C + c];
+                    float Q10 = input_data[n * H_in * W_in * C + y0 * W_in * C + x1 * C + c];
+                    float Q01 = input_data[n * H_in * W_in * C + y1 * W_in * C + x0 * C + c];
+                    float Q11 = input_data[n * H_in * W_in * C + y1 * W_in * C + x1 * C + c];
 
-                    float Q00 = input_data[base_in_idx + y0 * W_in + x0];
-                    float Q10 = input_data[base_in_idx + y0 * W_in + x1];
-                    float Q01 = input_data[base_in_idx + y1 * W_in + x0];
-                    float Q11 = input_data[base_in_idx + y1 * W_in + x1];
-
-                    if (strcmp(padding_mode, "zeros") == 0) {
+                    // 处理边界
+                    if (strcmp(padding_mode, "\"zeros\"") == 0) {
                         Q00 = valid_x0 && valid_y0 ? Q00 : 0.0f;
                         Q10 = valid_x1 && valid_y0 ? Q10 : 0.0f;
                         Q01 = valid_x0 && valid_y1 ? Q01 : 0.0f;
                         Q11 = valid_x1 && valid_y1 ? Q11 : 0.0f;
-                    } else if (strcmp(padding_mode, "border") == 0) {
-                         // Border mode uses clamped indices, so no extra check needed here
-                         // The clamping above already handles it.
+                    } else if(strcmp(padding_mode, "\"border\"") == 0){
+                        // Border模式：使用clamp后的坐标，value已经是正确的
                     }
-                    // Note: Reflection padding would require more logic
 
+                    // 双线性插值
                     float Q0 = Q00 * (1.0f - wx) + Q10 * wx;
                     float Q1 = Q01 * (1.0f - wx) + Q11 * wx;
                     float result = Q0 * (1.0f - wy) + Q1 * wy;
@@ -87,33 +91,39 @@ void _nearest_sample(
     const char* padding_mode,
     float* output_data)
 {
+    // 如果是NHWC格式，应该是 N->H->W->C
     for (int n = 0; n < N; ++n) {
-        for (int c = 0; c < C; ++c) {
-            for (int h = 0; h < H_out; ++h) {
-                for (int w = 0; w < W_out; ++w) {
-                    int out_idx = n * C * H_out * W_out + c * H_out * W_out + h * W_out + w;
-                    float x = grid_x_data[n * H_out * W_out * 2 + h * W_out * 2 + w * 2 + 0];
-                    float y = grid_y_data[n * H_out * W_out * 2 + h * W_out * 2 + w * 2 + 1];
+        for (int h = 0; h < H_out; ++h) {
+            for (int w = 0; w < W_out; ++w) {
+                // 修正：grid坐标访问
+                float x = grid_x_data[n * H_out * W_out + h * W_out + w];
+                float y = grid_y_data[n * H_out * W_out + h * W_out + w];
 
-                    int x_nearest = static_cast<int>(std::round(x));
-                    int y_nearest = static_cast<int>(std::round(y));
+                int x_nearest = static_cast<int>(std::round(x));
+                int y_nearest = static_cast<int>(std::round(y));
 
-                    bool valid_x = (x_nearest >= 0) && (x_nearest < W_in);
-                    bool valid_y = (y_nearest >= 0) && (y_nearest < H_in);
+                bool valid_x = (x_nearest >= 0) && (x_nearest < W_in);
+                bool valid_y = (y_nearest >= 0) && (y_nearest < H_in);
 
-                    x_nearest = std::max(0, std::min(x_nearest, W_in - 1));
-                    y_nearest = std::max(0, std::min(y_nearest, H_in - 1));
+                // Clamp坐标到有效范围
+                x_nearest = std::max(0, std::min(x_nearest, W_in - 1));
+                y_nearest = std::max(0, std::min(y_nearest, H_in - 1));
 
-                    int in_idx = n * C * H_in * W_in + c * H_in * W_in + y_nearest * W_in + x_nearest;
+                // 对每个通道进行采样
+                for (int c = 0; c < C; ++c) {
+                    // NHWC格式的索引计算
+                    int out_idx = n * H_out * W_out * C + h * W_out * C + w * C + c;
+                    int in_idx = n * H_in * W_in * C + y_nearest * W_in * C + x_nearest * C + c;
 
                     float value = input_data[in_idx];
 
-                    if (strcmp(padding_mode, "zeros") == 0) {
+                    // 处理边界填充
+                    if (strcmp(padding_mode, "\"zeros\"") == 0) {
                         value = (valid_x && valid_y) ? value : 0.0f;
-                    } else if (strcmp(padding_mode, "border") == 0) {
-                        // Border mode uses clamped indices, handled above
+                    } else if (strcmp(padding_mode, "\"border\"") == 0) {
+                        // Border模式：使用clamp后的坐标，value已经是正确的
+                        // 无需额外处理
                     }
-                    // Note: Reflection padding would require more logic
 
                     output_data[out_idx] = value;
                 }
@@ -136,12 +146,12 @@ int compute_custom_grid_sample_float32(
         return -1; // Or appropriate error code
     }
 
-    // if (inputs[0].attr.type != RKNN_TENSOR_FLOAT32 ||
-    //     inputs[1].attr.type != RKNN_TENSOR_FLOAT32 ||
-    //     outputs[0].attr.type != RKNN_TENSOR_FLOAT32) {
-    //     // Ensure float32 types
-    //     return -1;
-    // }
+    if (inputs[0].attr.type != RKNN_TENSOR_FLOAT32 ||
+        inputs[1].attr.type != RKNN_TENSOR_FLOAT32 ||
+        outputs[0].attr.type != RKNN_TENSOR_FLOAT32) {
+        // Ensure float32 types
+        return -1;
+    }
 
     if (inputs[0].attr.n_dims != 4 || inputs[1].attr.n_dims != 4 || outputs[0].attr.n_dims != 4) {
          // Ensure 4D tensors
@@ -230,6 +240,8 @@ int compute_custom_grid_sample_float32(
     // or using a library that supports it.
     float* grid_x = (float*)malloc(N_out * H_out * W_out * sizeof(float));
     float* grid_y = (float*)malloc(N_out * H_out * W_out * sizeof(float));
+    memset(grid_x, 0, N_out * H_out * W_out * sizeof(float));
+    memset(grid_y, 0, N_out * H_out * W_out * sizeof(float));
     if (!grid_x || !grid_y) {
         free(grid_x); free(grid_y);
         return -1; // Allocation failed
@@ -464,19 +476,19 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
         PyErr_Format(PyExc_RuntimeError, "rknn_inputs_set failed with code %d", ret);
         return NULL;
     }
-    printf("[debug] done inputs set\n");fflush(stdout);
+    // printf("[debug] done inputs set\n");fflush(stdout);
     ret = rknn_run(ctx, NULL);
     if (ret < 0) {
         PyErr_Format(PyExc_RuntimeError, "rknn_run failed with code %d", ret);
         return NULL;
     }
-    printf("[debug] done run\n");fflush(stdout);
+    // printf("[debug] done run\n");fflush(stdout);
     ret = rknn_outputs_get(ctx, 3, outputs, NULL);
     if (ret < 0) {
         PyErr_Format(PyExc_RuntimeError, "rknn_outputs_get failed with code %d", ret);
         return NULL;
     }
-    printf("[debug] done outputs set\n");fflush(stdout);
+    // printf("[debug] done outputs set\n");fflush(stdout);
     // --- Convert RKNN outputs to NumPy arrays ---
     // Assuming outputs are [1, num_dets], [1, num_dets, 4], [1, num_dets]
     // We need to know the actual shape to create correct NumPy arrays.
@@ -484,15 +496,21 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
     // For simplicity, let's assume you query output attrs or know the shape
     // Let's say output 0 is labels [1, D], 1 is boxes [1, D, 4], 2 is scores [1, D]
     // We'll create 1D or 2D arrays for simplicity in Python (squeeze batch dim)
-    printf("[debug] dims_labels:%d\n", (int)(outputs[0].size / sizeof(float)));
+    // printf("[debug] dims_labels:%d\n", (int)(outputs[0].size / sizeof(float)));
+    // printf("[debug] dims_boxes:%d\n", (int)(outputs[1].size / (4 * sizeof(float))));
+    // printf("[debug] dims_scores:%d\n", (int)(outputs[2].size / sizeof(float)));
     fflush(stdout);
     npy_intp dims_labels[] = {(npy_intp)(outputs[0].size / sizeof(float))}; // [D]
     npy_intp dims_boxes[] = {(npy_intp)(outputs[1].size / (4 * sizeof(float))), 4}; // [D, 4]
     npy_intp dims_scores[] = {(npy_intp)(outputs[2].size / sizeof(float))}; // [D]
 
+    // printf("[debug] 1\n");fflush(stdout);
+
     PyObject* py_labels = PyArray_SimpleNewFromData(1, dims_labels, NPY_FLOAT32, outputs[0].buf);
     PyObject* py_boxes = PyArray_SimpleNewFromData(2, dims_boxes, NPY_FLOAT32, outputs[1].buf);
     PyObject* py_scores = PyArray_SimpleNewFromData(1, dims_scores, NPY_FLOAT32, outputs[2].buf);
+
+    // printf("[debug] 2\n");fflush(stdout);
 
     if (!py_labels || !py_boxes || !py_scores) {
         // Cleanup on error
@@ -507,17 +525,19 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
     // The data is managed by RKNN outputs. We need to ensure it's valid until Python uses it.
     // A better approach might be to copy the data or manage lifetime more carefully.
     // For now, we assume Python uses it immediately and we release it after.
+
     PyArray_CLEARFLAGS((PyArrayObject*)py_labels, NPY_ARRAY_OWNDATA);
     PyArray_CLEARFLAGS((PyArrayObject*)py_boxes, NPY_ARRAY_OWNDATA);
     PyArray_CLEARFLAGS((PyArrayObject*)py_scores, NPY_ARRAY_OWNDATA);
 
+    // printf("[debug] 3\n");fflush(stdout);
+
+
     // Create a tuple to return the three arrays
     PyObject* result_tuple = PyTuple_New(3);
-    if (!result_tuple) {
-        // Cleanup on error
-        rknn_outputs_release(ctx, 3, outputs); // This might free outputs[i].buf!
-        // If rknn_outputs_release frees the buffer, the numpy arrays become invalid!
-        // This is a problem with this simple approach.
+    // printf("[debug] tuple:%p\n", (void*)result_tuple);
+    // printf("[debug] %d\n", !result_tuple);
+    if (result_tuple) {
         // Better: Copy data into numpy arrays that Python owns, or manage lifetime properly.
         // For demonstration, let's assume we copy.
         // *** REVISION: Copy data to make NumPy arrays own it ***
@@ -534,8 +554,11 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
         PyTuple_SetItem(result_tuple, 0, py_labels);
         PyTuple_SetItem(result_tuple, 1, py_boxes);
         PyTuple_SetItem(result_tuple, 2, py_scores);
+
+        rknn_outputs_release(ctx, 3, outputs);
     } else {
         // If PyTuple_New failed, clean up numpy arrays
+         PyErr_SetString(PyExc_RuntimeError, "Failed to create result tuple for outputs");
          Py_DECREF(py_labels);
          Py_DECREF(py_boxes);
          Py_DECREF(py_scores);
@@ -543,8 +566,8 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
          return NULL;
     }
 
-    // Release RKNN outputs (buffer memory is now managed by copied NumPy arrays)
-    rknn_outputs_release(ctx, 3, outputs);
+    // destroy
+    rknn_destroy(ctx);
 
     return result_tuple; // Return the tuple of NumPy arrays
 }

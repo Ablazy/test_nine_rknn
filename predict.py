@@ -63,7 +63,7 @@ def predict_onnx_dfine(image,draw_result=False):
     w, h = im_pil.size
     orig_size_np = np.array([[w, h]], dtype=np.int64)
     im_resized = im_pil.resize((320, 320), Image.Resampling.BILINEAR)
-    im_data = np.array(im_resized, dtype=np.float32) / 255.0
+    im_data = np.array(im_resized, dtype=np.float32)
     im_data = im_data.transpose(2, 0, 1)
     im_data = np.expand_dims(im_data, axis=0)
     inputs = {
@@ -74,9 +74,13 @@ def predict_onnx_dfine(image,draw_result=False):
     print(outputs)
     output_map = {name: data for name, data in zip(output_names, outputs)}
     labels = output_map['labels'][0]
+    # print(labels)
     boxes = output_map['boxes'][0]
+    # print(boxes)
     scores = output_map['scores'][0]
-    
+    # print(scores)
+    print(f"labels:{outputs[0].shape}, boxes:{outputs[1].shape}, scores:{outputs[2].shape}")
+
     colors = ["red", "blue", "green", "yellow", "white", "purple", "orange"]
     mask = scores > 0.4
     filtered_labels = labels[mask]
@@ -199,18 +203,22 @@ def predict_rknn_dfine(image, draw_result=False):
     w, h = im_pil.size
     orig_size_np = np.array([[[[w, h]]]], dtype=np.int64)
     im_resized = im_pil.resize((320, 320), Image.Resampling.BILINEAR)
-    im_data = np.array(im_resized, dtype=np.float32)
+    im_data = np.array(im_resized, dtype=np.float32) 
     im_data = np.expand_dims(im_data, axis=0)
     print(im_data.shape, orig_size_np.shape)
     start = time.time()
     # outputs = rknn_dfine.inference(inputs=[im_data, orig_size_np])[0]
     outputs = rknn_infer_dfine.infer_rknn(im_data, orig_size_np)
+    print(outputs)
     print(f"推理耗时: {time.time() - start}")
     # rknn_dfine.release()
     
     labels = outputs[0]
     boxes = outputs[1]
     scores = outputs[2]
+    # print(labels)
+    # print(scores)
+    # print(f"labels:{labels.shape}, boxes:{boxes.shape}, scores:{scores.shape}")
 
     colors = ["red", "blue", "green", "yellow", "white", "purple", "orange"]
     mask = scores > 0.4
@@ -354,4 +362,7 @@ if __name__ == "__main__":
     # predict_rknn_pdl(r'img_2_val')
     # predict_rknn_pdl(r'img_saved/img_fail/933762ddd6054c13a4d90740180afe51')
     # load_dfine_model()
-    predict_rknn_dfine(r"img_saved/PixPin_2025-08-02_18-56-13.png",True)
+    img_path = r"img_saved/click/426322687ca14e3c9ab39d4e2de18855.jpg"
+    predict_rknn_dfine(img_path,False)
+    load_dfine_model()
+    predict_onnx_dfine(img_path,False)
