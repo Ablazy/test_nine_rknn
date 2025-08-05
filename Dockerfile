@@ -10,7 +10,7 @@ COPY . /test_nine
 RUN pip install --no-cache-dir -r requirements_without_train.txt
 
 # 暴露端口
-EXPOSE 9645
+EXPOSE 9646
 
 # 启动服务
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9645"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9646"]
