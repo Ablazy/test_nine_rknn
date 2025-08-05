@@ -42,22 +42,6 @@ def non_maximum_suppression(detections, iou_threshold=0.35):
 
     return final_detections
 
-def load_dfine_rknn_model(name='d-fine-n_op.rknn'):
-    global rknn_dfine
-    start = time.time()
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(current_dir, 'model', name)
-    rknn_dfine = RKNN()
-    ret = rknn_dfine.load_rknn(model_path)
-    if ret != 0:
-        print("加载模型失败")
-        exit(ret)
-    ret = rknn_dfine.init_runtime()
-    if ret != 0:
-        print("初始化运行时失败")
-        exit(ret)
-    print(f"加载{name}模型，耗时:{time.time() - start}")
-
 def load_pdl_rknn_model(name='PP-HGNetV2-B4.rknn'):
     global rknn_pdl
     start = time.time()
