@@ -1,4 +1,5 @@
 #include <cstring> // For memcpy, memset
+#include <string>
 #include <cmath>   // For floor, round, fmin, fmax
 #include <cstdlib>
 #include <algorithm> // For std::max, std::min
@@ -14,7 +15,20 @@
 // (Assuming these helper functions exist or are implemented similarly)
 // These are conceptual, as the exact RKNN API for attribute access might differ slightly.
 // You might need to adapt based on the actual RKNN SDK documentation.
+static void dump_tensor_attr(rknn_tensor_attr* attr)
+{
+  std::string shape_str = attr->n_dims < 1 ? "" : std::to_string(attr->dims[0]);
+  for (uint32_t i = 1; i < attr->n_dims; ++i) {
+    shape_str += ", " + std::to_string(attr->dims[i]);
+  }
 
+  printf("  index=%d, name=%s, n_dims=%d, dims=[%s], n_elems=%d, size=%d, w_stride = %d, size_with_stride=%d, fmt=%s, "
+         "type=%s, qnt_type=%s, "
+         "zp=%d, scale=%f\n",
+         attr->index, attr->name, attr->n_dims, shape_str.c_str(), attr->n_elems, attr->size, attr->w_stride,
+         attr->size_with_stride, get_format_string(attr->fmt), get_type_string(attr->type),
+         get_qnt_type_string(attr->qnt_type), attr->zp, attr->scale);
+}
 // --- Core Computation Logic ---
 
 // Helper for bilinear sampling
@@ -24,43 +38,42 @@ void _bilinear_sample(
     const char* padding_mode,
     float* output_data)
 {
-    // NHWC 格式：循环顺序应该是 N->H->W->C
+    // NCHW 格式：循环顺序应该是 N->C->H->W
     for (int n = 0; n < N; ++n) {
-        for (int h = 0; h < H_out; ++h) {
-            for (int w = 0; w < W_out; ++w) {
-                float x = grid_x_data[n * H_out * W_out + h * W_out + w];
-                float y = grid_y_data[n * H_out * W_out + h * W_out + w];
+        for (int c = 0; c < C; ++c) {
+            for (int h = 0; h < H_out; ++h) {
+                for (int w = 0; w < W_out; ++w) {
+                    float x = grid_x_data[n * H_out * W_out + h * W_out + w];
+                    float y = grid_y_data[n * H_out * W_out + h * W_out + w];
 
-                // 计算双线性插值的四个邻近点
-                int x0 = static_cast<int>(std::floor(x));
-                int x1 = x0 + 1;
-                int y0 = static_cast<int>(std::floor(y));
-                int y1 = y0 + 1;
+                    // 计算双线性插值的四个邻近点
+                    int x0 = static_cast<int>(std::floor(x));
+                    int x1 = x0 + 1;
+                    int y0 = static_cast<int>(std::floor(y));
+                    int y1 = y0 + 1;
 
-                float wx = x - x0;
-                float wy = y - y0;
+                    float wx = x - x0;
+                    float wy = y - y0;
 
-                // 边界检查和处理
-                bool valid_x0 = (x0 >= 0) && (x0 < W_in);
-                bool valid_x1 = (x1 >= 0) && (x1 < W_in);
-                bool valid_y0 = (y0 >= 0) && (y0 < H_in);
-                bool valid_y1 = (y1 >= 0) && (y1 < H_in);
+                    // 边界检查和处理
+                    bool valid_x0 = (x0 >= 0) && (x0 < W_in);
+                    bool valid_x1 = (x1 >= 0) && (x1 < W_in);
+                    bool valid_y0 = (y0 >= 0) && (y0 < H_in);
+                    bool valid_y1 = (y1 >= 0) && (y1 < H_in);
 
-                x0 = std::max(0, std::min(x0, W_in - 1));
-                x1 = std::max(0, std::min(x1, W_in - 1));
-                y0 = std::max(0, std::min(y0, H_in - 1));
-                y1 = std::max(0, std::min(y1, H_in - 1));
+                    x0 = std::max(0, std::min(x0, W_in - 1));
+                    x1 = std::max(0, std::min(x1, W_in - 1));
+                    y0 = std::max(0, std::min(y0, H_in - 1));
+                    y1 = std::max(0, std::min(y1, H_in - 1));
 
-                // 对每个通道进行插值
-                for (int c = 0; c < C; ++c) {
-                    // NHWC 格式的索引计算
-                    int out_idx = n * H_out * W_out * C + h * W_out * C + w * C + c;
+                    // NCHW 格式的索引计算
+                    int out_idx = n * C * H_out * W_out + c * H_out * W_out + h * W_out + w;
                     
-                    // 获取四个邻近点的值（NHWC格式）
-                    float Q00 = input_data[n * H_in * W_in * C + y0 * W_in * C + x0 * C + c];
-                    float Q10 = input_data[n * H_in * W_in * C + y0 * W_in * C + x1 * C + c];
-                    float Q01 = input_data[n * H_in * W_in * C + y1 * W_in * C + x0 * C + c];
-                    float Q11 = input_data[n * H_in * W_in * C + y1 * W_in * C + x1 * C + c];
+                    // 获取四个邻近点的值（NCHW格式）
+                    float Q00 = input_data[n * C * H_in * W_in + c * H_in * W_in + y0 * W_in + x0];
+                    float Q10 = input_data[n * C * H_in * W_in + c * H_in * W_in + y0 * W_in + x1];
+                    float Q01 = input_data[n * C * H_in * W_in + c * H_in * W_in + y1 * W_in + x0];
+                    float Q11 = input_data[n * C * H_in * W_in + c * H_in * W_in + y1 * W_in + x1];
 
                     // 处理边界
                     if (strcmp(padding_mode, "\"zeros\"") == 0) {
@@ -198,7 +211,7 @@ int compute_custom_grid_sample_float32(
     rknn_custom_op_attr op_attr={};
 
     // Get 'mode' attribute (default "bilinear")
-    char mode_str[32] = "bilinear"; // Default value
+    char mode_str[32] = "\"bilinear\""; // Default value
     const char* mode = mode_str; // 默认值
     rknn_custom_op_get_op_attr(op_ctx, "mode", &op_attr);
     if (op_attr.data == NULL) {
@@ -210,7 +223,7 @@ int compute_custom_grid_sample_float32(
     }
 
     // Get 'padding_mode' attribute (default "zeros")
-    char padding_mode_str[32] = "zeros"; // Default value
+    char padding_mode_str[32] = "\"zeros\""; // Default value
     const char* padding_mode = padding_mode_str;
     op_attr = rknn_custom_op_attr{};
     rknn_custom_op_get_op_attr(op_ctx, "padding_mode", &op_attr);
@@ -260,10 +273,12 @@ int compute_custom_grid_sample_float32(
                      // Align corners: [-1, 1] -> [0, W_in-1] and [0, H_in-1]
                      x_coord = (norm_x + 1.0f) * (W_in - 1) / 2.0f;
                      y_coord = (norm_y + 1.0f) * (H_in - 1) / 2.0f;
+                    //  printf("[debug] With align corners\n");fflush(stdout);
                  } else {
                      // No align corners: [-1, 1] -> [-0.5, W_in-0.5] and [-0.5, H_in-0.5]
                      x_coord = ((norm_x + 1.0f) * W_in - 1.0f) / 2.0f;
                      y_coord = ((norm_y + 1.0f) * H_in - 1.0f) / 2.0f;
+                    //  printf("[debug] No align corners\n");fflush(stdout);
                  }
                  grid_x[n * H_out * W_out + h * W_out + w] = x_coord;
                  grid_y[n * H_out * W_out + h * W_out + w] = y_coord;
@@ -290,72 +305,6 @@ int compute_custom_grid_sample_float32(
     free(grid_y);
 
     return 0; // Success
-}
-
-
-// --- Registration (Example usage, similar to Sigmoid example) ---
-// This part would typically go in your main() function after rknn_init
-
-int register_grid_sample_op(rknn_context ctx) {
-    rknn_custom_op user_op[1];
-    memset(user_op, 0, sizeof(rknn_custom_op));
-
-    // Set the op_type to match the one used in your model
-    strncpy(user_op[0].op_type, "cstGridSample", RKNN_MAX_NAME_LEN - 1);
-    user_op[0].version = 1;
-    user_op[0].target  = RKNN_TARGET_TYPE_CPU; // Or appropriate target
-    user_op[0].compute = compute_custom_grid_sample_float32; // Pointer to your function
-
-    int ret = rknn_register_custom_ops(ctx, user_op, 1);
-    if (ret < 0) {
-        printf("rknn_register_custom_op (cstGridSample) failed! ret = %d\n", ret);
-        return -1;
-    }
-    printf("Custom op 'cstGridSample' registered successfully.\n");
-    return 0;
-}
-
-
-
-extern "C" // 必须使用 C 链接
-rknn_custom_op* get_rknn_custom_op(uint32_t* op_num)
-{
-    if (op_num == nullptr) {
-        return nullptr; // 参数检查
-    }
-
-    // 分配一个 rknn_custom_op 结构体
-    // 注意：根据规范，一个库只注册一个算子
-    rknn_custom_op* user_op = (rknn_custom_op*)malloc(sizeof(rknn_custom_op));
-    if (user_op == nullptr) {
-        *op_num = 0;
-        return nullptr;
-    }
-
-    // 初始化结构体内存
-    memset(user_op, 0, sizeof(rknn_custom_op));
-
-    // --- 设置算子信息 (这部分与你原来的 register_grid_sample_op 类似) ---
-    // 确保这个 op_type 与你模型中的算子名称完全一致
-    strncpy(user_op->op_type, "cstGridSample", RKNN_MAX_NAME_LEN - 1);
-    user_op->version = 1; // 版本号，通常为1
-    // 根据你的硬件和SDK支持情况调整 target
-    // 如果只实现了CPU版本，设为 RKNN_TARGET_TYPE_CPU
-    // 如果实现了NPU版本，可能需要设为 RKNN_TARGET_TYPE_NPU
-    user_op->target  = RKNN_TARGET_TYPE_CPU;
-    // 关键：将 compute 函数指针指向你的实现
-    user_op->compute = compute_custom_grid_sample_float32;
-
-    // --- 可选：如果你有 OpenCL 实现 ---
-    // #ifdef RKNN_OP_USE_CL
-    // extern const char cl_kernel_source_grid_sample[]; // 你的 OpenCL 源码
-    // user_op->cl_source_size = strlen(cl_kernel_source_grid_sample);
-    // user_op->cl_source = cl_kernel_source_grid_sample;
-    // strcpy(user_op->cl_kernel_name, "grid_sample_kernel"); // 你的 kernel 名
-    // #endif
-
-    *op_num = 1; // 告诉调用者我们提供了一个算子
-    return user_op; // 返回指向算子结构体的指针
 }
 
 static rknn_context ctx = 0;
@@ -411,7 +360,7 @@ static int load_model_internal(const char* model_path) {
     }
     printf("Custom op 'cstGridSample' registered successfully.\n");
     model_loaded = 1;
-    // 插件应该会自动加载，如果放在正确目录
+
     printf("Model loaded in C extension.\n");
     return 0;
 }
@@ -438,6 +387,44 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
          PyErr_SetString(PyExc_ValueError, "Orig size array must be 4D int64");
          return NULL;
     }
+
+    rknn_input_output_num io_num;
+    int ret;
+    ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
+    if (ret != RKNN_SUCC) {
+        printf("rknn_query fail! ret=%d\n", ret);
+        return NULL;
+    }
+    // printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
+
+    // printf("input tensors:\n");
+    rknn_tensor_attr input_attrs[io_num.n_input];
+    memset(input_attrs, 0, io_num.n_input * sizeof(rknn_tensor_attr));
+    for (uint32_t i = 0; i < io_num.n_input; i++) {
+        input_attrs[i].index = i;
+        // query info
+        ret = rknn_query(ctx, RKNN_QUERY_INPUT_ATTR, &(input_attrs[i]), sizeof(rknn_tensor_attr));
+        if (ret < 0) {
+        printf("rknn_query error! ret=%d\n", ret);
+        return NULL;
+        }
+        // dump_tensor_attr(&input_attrs[i]);
+    }
+
+    // printf("output tensors:\n");
+    rknn_tensor_attr output_attrs[io_num.n_output];
+    memset(output_attrs, 0, io_num.n_output * sizeof(rknn_tensor_attr));
+    for (uint32_t i = 0; i < io_num.n_output; i++) {
+        output_attrs[i].index = i;
+        // query info
+        ret = rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, &(output_attrs[i]), sizeof(rknn_tensor_attr));
+        if (ret != RKNN_SUCC) {
+        printf("rknn_query fail! ret=%d\n", ret);
+        return NULL;
+        }
+        // dump_tensor_attr(&output_attrs[i]);
+    }
+
     // Get data pointers and shapes
     float *input_data = (float*)PyArray_DATA(input_array);
     npy_intp *input_shape = PyArray_DIMS(input_array);
@@ -445,32 +432,32 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
     npy_intp *orig_size_shape = PyArray_DIMS(orig_size_array);
 
     // --- Setup RKNN Inputs (similar to pure C example) ---
-    rknn_input inputs[2];
+    rknn_input inputs[io_num.n_input];
     memset(inputs, 0, sizeof(inputs));
     inputs[0].index = 0;
     inputs[0].buf = input_data;
     inputs[0].size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * sizeof(float);
     inputs[0].pass_through = 0;
     inputs[0].type = RKNN_TENSOR_FLOAT32;
-    inputs[0].fmt = RKNN_TENSOR_NHWC; // Adjust based on your model
+    inputs[0].fmt = input_attrs[0].fmt; // Adjust based on your model
 
     inputs[1].index = 1;
     inputs[1].buf = orig_size_data;
     inputs[1].size = orig_size_shape[0] * orig_size_shape[1] * orig_size_shape[2] * orig_size_shape[3] * sizeof(int64_t);
-    inputs[1].pass_through = 1;
+    inputs[1].pass_through = 0;
     inputs[1].type = RKNN_TENSOR_INT64;
-    inputs[1].fmt = RKNN_TENSOR_NHWC; // Often doesn't matter for scalar/vector
+    inputs[1].fmt = input_attrs[1].fmt; // Often doesn't matter for scalar/vector
 
     // --- Setup RKNN Outputs ---
-    rknn_output outputs[3]; // Assuming 3 outputs
+    rknn_output outputs[io_num.n_output]; // Assuming 3 outputs
     memset(outputs, 0, sizeof(outputs));
     for (int i = 0; i < 3; i++) {
         outputs[i].want_float = 1;
         outputs[i].is_prealloc = 0;
+        outputs[i].index = i;
     }
 
     // --- Run Inference ---
-    int ret;
     ret = rknn_inputs_set(ctx, 2, inputs);
     if (ret < 0) {
         PyErr_Format(PyExc_RuntimeError, "rknn_inputs_set failed with code %d", ret);
