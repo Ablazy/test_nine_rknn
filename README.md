@@ -9,6 +9,21 @@
 
 点选验证使用的d-fine-n模型，由于rknn不支持GridSample算子。目前使用C API构建了自定义的cstGridSample算子。为了方便输入，将原始模型的第二个输入orig_target_sizes设计为了4维，并在之后添加了reshape，此操作不影响模型推理。同时，由于rknn最多支持float16的数据推理，原始模型在推理中，个别clip算子会导致数据溢出，产生`inf`，因此同样对这些clip算子进行了调整，调整后模型精度影响不大。
 
+## docker端部署问题
+
+在docker端部署时，由于依赖NPU设备，需要使用`--device`为docker容器添加设备。但由于`rknn-toolkit-lite2`依赖`/proc/device-tree`目录获取设备树相关的信息，使得docker容器运行时只能使用`--privileged`模式。请保证docker镜像安全的情况下使用`--privileged`参数运行容器。下面是docker启动示例：
+
+```shell
+docker run -it -d \
+  --privileged \
+  --name test_nine-rknn \
+  -p 9646:9646 \
+  -v /usr/lib/librknnrt.so:/usr/lib/librknnrt.so:ro \
+  test_nine-rknn 
+```
+
+注意端口的映射应与构建docker镜像时，Dockerfile中暴露的一致。
+
 ## 关于自定义算子
 
 目前实现的是rk3588上CPU层面的GridSample自定义算子，只实现了功能，未针对运行效率做优化，算子效率较低，具体体现在模型中如下：
