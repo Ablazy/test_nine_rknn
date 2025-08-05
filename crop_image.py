@@ -134,7 +134,7 @@ if __name__ == "__main__":
     #     wb.write(icon_img_jpg)
     
     # V3测试代码
-    pic = "img_saved/7fe559a85bac4c03bc6ea7b2e85325bf.jpg"
+    pic = "test_data/test_nine.jpg"
     print("推理图片为：",pic)
     with open(pic, "rb") as f:
         img = f.read()

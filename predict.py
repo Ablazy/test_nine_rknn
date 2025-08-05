@@ -5,7 +5,6 @@ import time
 from PIL import Image, ImageDraw
 from rknnlite.api import RKNNLite as RKNN
 from operators import rknn_infer_dfine
-import os
 # os.environ["RKNN_LOG_LEVEL"] = "5"
 
     
@@ -59,7 +58,6 @@ def load_pdl_rknn_model(name='PP-HGNetV2-B4.rknn'):
     print(f"加载{name}模型，耗时:{time.time() - start}")
 
 def predict_rknn_dfine(image, draw_result=False):
-    # load_dfine_rknn_model()
     rknn_infer_dfine.load_model('model/d-fine-n_op.rknn')
     if isinstance(image, bytes):
         im_pil = bytes_to_pil(image)
@@ -224,10 +222,7 @@ def predict_rknn_pdl(images_path):
 
 if __name__ == "__main__":
     # 使用PP-HGNetV2-B4.rknn
-    #predict_onnx_pdl(r'img_saved\img_fail\7fe559a85bac4c03bc6ea7b2e85325bf')
-    # predict_rknn_pdl(r'img_2_val')
-    # predict_rknn_pdl(r'img_saved/img_fail/933762ddd6054c13a4d90740180afe51')
+    predict_rknn_pdl(r'test_data/test_nine')
+
     # 使用d-fine-n_op.rknn
-    # load_dfine_model()
-    img_path = r"test_data/test_icon.jpg"
-    predict_rknn_dfine(img_path,True)
+    predict_rknn_dfine(r"test_data/test_icon.jpg",True)
