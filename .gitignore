@@ -1,5 +1,8 @@
-img*
+# .gitignore for test_nine_rknn project
 model
 __pycache__
 *.onnx
 **/build/
+dumps
+.vscode
+*.log
