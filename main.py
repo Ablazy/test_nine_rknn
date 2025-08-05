@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI,Query, HTTPException
 # from predict import predict_onnx_pdl,predict_onnx_dfine
-from predict import predict_rknn_pdl,predict_onnx_dfine
+from predict import predict_rknn_pdl,predict_rknn_dfine
 from crop_image import crop_image_v3,save_path,save_fail_path,save_pass_path,validate_path
 
 PORT = 9645
@@ -107,7 +107,7 @@ def do_pass_nine(pic_content: bytes) -> list[str]:
 
 def do_pass_icon(pic:Any, draw_result: bool) -> list[str]:
     """处理图标点选验证码，返回坐标点列表。"""
-    result_list = predict_onnx_dfine(pic,draw_result)
+    result_list = predict_rknn_dfine(pic,draw_result)
     print(result_list)
     return [f"{round(x / 333 * 10000)}_{round(y / 333 * 10000)}" for x, y in result_list]
 
