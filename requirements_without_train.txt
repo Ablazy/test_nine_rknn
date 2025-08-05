@@ -1,7 +1,6 @@
 httpx
 httpx[http2]
 cryptography
-onnxruntime
 opencv-python-headless
 numpy
 Pillow
