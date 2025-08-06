@@ -553,9 +553,6 @@ static PyObject* infer_rknn(PyObject* self, PyObject* args) {
          return NULL;
     }
 
-    // destroy
-    rknn_destroy(ctx);
-
     return result_tuple; // Return the tuple of NumPy arrays
 }
 
@@ -572,10 +569,23 @@ static PyObject* load_model(PyObject* self, PyObject* args) {
     Py_RETURN_NONE; // Return Python None
 }
 
+static PyObject* release_model(PyObject* self, PyObject* args) {
+    if (model_loaded && ctx != 0) {
+        rknn_destroy(ctx);
+        ctx = 0;
+        model_loaded = 0;
+        printf("Model context destroyed and resources released.\n");
+    } else {
+        printf("No model to release.\n");
+    }
+    Py_RETURN_NONE;
+}
+
 // Method definitions
 static PyMethodDef module_methods[] = {
     {"load_model", load_model, METH_VARARGS, "Load RKNN model"},
     {"infer_rknn", infer_rknn, METH_VARARGS, "Run inference using RKNN C API"},
+    {"release_model", release_model, METH_VARARGS, "Release RKNN model and free resources"},
     {NULL, NULL, 0, NULL} // Sentinel
 };
 
