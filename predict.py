@@ -60,8 +60,10 @@ def load_pdl_rknn_model(name='PP-HGNetV2-B4.rknn'):
 def predict_rknn_dfine(image, draw_result=False):
     rknn_infer_dfine.load_model('model/d-fine-n_op.rknn')
     if isinstance(image, bytes):
+        print("使用bytes数据进行推理")
         im_pil = bytes_to_pil(image)
     else:
+        print("使用PIL图片进行推理")
         im_pil = Image.open(image).convert("RGB")
     w, h = im_pil.size
     # 这里的orig_size_np需要是4维的，形状为(1, 1, 1, 2)，因为RKNN模型需要4维输入
@@ -72,11 +74,12 @@ def predict_rknn_dfine(image, draw_result=False):
     # 在C API中，捕获模型输入的fmt，值为NHWC
     # im_data = im_data.transpose(2, 0, 1)
     im_data = np.expand_dims(im_data, axis=0)
+
     start = time.time()
     # outputs = rknn_dfine.inference(inputs=[im_data, orig_size_np])[0]
     outputs = rknn_infer_dfine.infer_rknn(im_data, orig_size_np)
     print(f"rknn推理耗时: {time.time() - start}")
-    # rknn_dfine.release()
+    rknn_infer_dfine.release_model()
     
     labels = outputs[0]
     boxes = outputs[1]
@@ -225,4 +228,5 @@ if __name__ == "__main__":
     predict_rknn_pdl(r'test_data/test_nine')
 
     # 使用d-fine-n_op.rknn
+    predict_rknn_dfine(r"test_data/test_icon.jpg",True)
     predict_rknn_dfine(r"test_data/test_icon.jpg",True)
