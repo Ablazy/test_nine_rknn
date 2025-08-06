@@ -130,33 +130,59 @@ def handle_pass_request(gt: str, challenge: str, save_result: bool, **kwargs) ->
     统一处理所有验证码请求的核心函数。
     """
     start_time = time.monotonic()
+    pic_name = None  # 初始化变量
+    
     try:
-        # 1. 准备
-        crack, pic_content, pic_name, pic_type = prepare(gt, challenge)
-        
+        # 1. 准备 - 添加更详细的错误信息
+        try:
+            crack, pic_content, pic_name, pic_type = prepare(gt, challenge)
+        except ValueError as ve:
+            logging.error(f"参数验证错误: {ve}")
+            return JSONResponse(status_code=400, content={"error": "参数错误", "detail": str(ve)})
+        except Exception as e:
+            logging.error(f"准备阶段错误: {e}", exc_info=True)
+            return JSONResponse(status_code=500, content={"error": "准备阶段错误", "detail": str(e)})
+
         # 2. 识别
-        
-        if pic_type == "nine":
-            point_list = do_pass_nine(pic_content)
-        elif pic_type == "icon":
-            point_list = do_pass_icon(pic_content, save_result)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown picture type: {pic_type}")
+        try:
+            if pic_type == "nine":
+                point_list = do_pass_nine(pic_content)
+            elif pic_type == "icon":
+                point_list = do_pass_icon(pic_content, save_result)
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown picture type: {pic_type}")
+        except Exception as e:
+            logging.error(f"图像识别错误: {e}", exc_info=True)
+            # 清理临时文件
+            if pic_name and os.path.exists(os.path.join(validate_path, pic_name)):
+                os.remove(os.path.join(validate_path, pic_name))
+            return JSONResponse(status_code=500, content={"error": "图像识别错误", "detail": str(e)})
 
         # 3. 验证
         elapsed = time.monotonic() - start_time
         wait_time = max(0, 4.0 - elapsed)
         time.sleep(wait_time)
 
-        response_str = crack.verify(point_list)
-        result = json.loads(response_str)
+        try:
+            response_str = crack.verify(point_list)
+            result = json.loads(response_str)
+        except Exception as e:
+            logging.error(f"验证阶段错误: {e}", exc_info=True)
+            # 清理临时文件
+            if pic_name and os.path.exists(os.path.join(validate_path, pic_name)):
+                os.remove(os.path.join(validate_path, pic_name))
+            return JSONResponse(status_code=500, content={"error": "验证阶段错误", "detail": str(e)})
 
         # 4. 后处理
-        passed = 'validate' in result.get('data', {})
-        if save_result:
-            save_image_for_train(pic_name, pic_type, passed)
-        else:
-            os.remove(os.path.join(validate_path,pic_name))
+        try:
+            passed = 'validate' in result.get('data', {})
+            if save_result:
+                save_image_for_train(pic_name, pic_type, passed)
+            else:
+                if pic_name and os.path.exists(os.path.join(validate_path, pic_name)):
+                    os.remove(os.path.join(validate_path, pic_name))
+        except Exception as e:
+            logging.warning(f"后处理阶段错误: {e}")  # 不影响主要结果
 
         total_time = time.monotonic() - start_time
         logging.info(
@@ -166,7 +192,13 @@ def handle_pass_request(gt: str, challenge: str, save_result: bool, **kwargs) ->
         return JSONResponse(content=result)
 
     except Exception as e:
-        logging.error(f"服务错误: {e}", exc_info=True)
+        logging.error(f"未捕获的服务错误: {e}", exc_info=True)
+        # 确保清理临时文件
+        try:
+            if pic_name and os.path.exists(os.path.join(validate_path, pic_name)):
+                os.remove(os.path.join(validate_path, pic_name))
+        except:
+            pass
         return JSONResponse(
             status_code=500,
             content={"error": "An internal server error occurred.", "detail": str(e)}
