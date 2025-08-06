@@ -7,7 +7,7 @@ WORKDIR /test_nine
 COPY . /test_nine
 
 # 安装依赖
-RUN pip install --no-cache-dir -r requirements_without_train.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 暴露端口
 EXPOSE 9646
